@@ -319,10 +319,12 @@ impl Fixer {
     fn build_file_info(bin_file: &str, bp_info: &Option<BreakpadInfo>) -> Result<FileInfo> {
         // If we're using Breakpad symbols, we don't consult `bin_file`.
         if let Some(bp_info) = bp_info {
+            eprintln!("Looking for symbols in folder = {}", bp_info.syms_dir);
             return Fixer::build_file_info_breakpad(bin_file, bp_info);
         }
 
         // Otherwise, we read `bin_file`.
+        eprintln!("Looking for native debug info in bin_file = {}", bin_file);
         let data = fs::read(bin_file).context("read")?;
         let file_format = Archive::peek(&data);
         match file_format {
@@ -348,7 +350,9 @@ impl Fixer {
         // - Unix: symbols are in `syms/libxul.so/<uuid>/libxul.so.sym`
         // - Windows: `bin_file` is bin/xul.dll`
         // - Windows: symbols are in `syms/xul.pdb/<uuid>/xul.sym`
+        eprintln!("Looking for breakpad symbols in bin_file = {}", bin_file);
         let bin_file = Path::new(bin_file);
+        eprintln!("Looking for breakpad symbols in path = {}", bin_file.display());
 
         // - Unix: `bin_base` is `libxul.so`
         // - Windows: `bin_base` is `xul`
@@ -362,6 +366,7 @@ impl Fixer {
         if is_win {
             bin_base.truncate(bin_base.len() - 4);
         }
+        eprintln!("bin_base = {}", bin_base);
 
         // - Unix: `db_seg` is `libxul.so`
         // - Windows: `db_seg` is `xul.pdb`
@@ -369,12 +374,14 @@ impl Fixer {
         if is_win {
             db_seg.push_str(".pdb");
         }
+        eprintln!("db_seg = {}", db_seg);
 
         // - Unix: `db_dir` is `syms/libxul.so/`
         // - Windows: `db_dir` is `syms/xul.pdb/`
         let mut db_dir = PathBuf::new();
         db_dir.push(&syms_dir);
         db_dir.push(&db_seg);
+        eprintln!("db_dir = {}", db_dir.display());
 
         // - Unix: `uuid_dir` is `syms/libxul.so/<uuid>/`
         // - Windows: `uuid_dir` is `syms/xul.pdb/<uuid>/`
@@ -388,16 +395,19 @@ impl Fixer {
             uuid_dir.push(uuid_seg);
             uuid_dir
         };
+        eprintln!("uuid_dir = {}", uuid_dir.display());
 
         // - Unix: `sym_seg` is `libxul.so.sym`
         // - Windows: `sym_seg` is `xul.sym`
         let mut sym_seg = bin_base;
         sym_seg.push_str(".sym");
+        eprintln!("sym_seg = {}", sym_seg);
 
         // - Unix: `sym_file` is `syms/libxul.so/<uuid>/libxul.so.sym`.
         // - Windows: `sym_file` is `syms/xul.pdb/<uuid>/xul.sym`.
         let mut sym_file = uuid_dir;
         sym_file.push(&sym_seg);
+        eprintln!("sym_file = {}", sym_file.display());
 
         let data = fs::read(&sym_file)
             .context(
@@ -430,6 +440,7 @@ impl Fixer {
             _ => unreachable!(),
         };
         let pdb_file_name = pe.debug_file_name().context("find debug info file for")?;
+        eprintln!("pdb_file_name = {}", pdb_file_name);
         let data = fs::read(pdb_file_name.to_string())
             .context("note: this is expected and harmless for all PDB files on opt automation runs")
             .with_context(|| format!("read debug info file `{}` for", pdb_file_name))?;
@@ -468,6 +479,7 @@ impl Fixer {
                     // It's an archive entry, e.g. "libgkrust.a(foo.o)". Read
                     // every entry in archive, if we haven't already done so.
                     if seen_archives.insert(ar_file_name) {
+                        eprintln!("ar_file_name = {}", ar_file_name);
                         let ar_data = fs::read(ar_file_name)
                             .with_context(|| format!("read ar `{}` referenced by", ar_file_name))?;
                         let ar = archive::Archive::parse(&ar_data).with_context(|| {
@@ -490,6 +502,7 @@ impl Fixer {
                 } else {
                     // It's a normal object file. Read it.
                     let note = "note: this is expected and harmless for all Mac object files on opt automation runs";
+                    eprintln!("oso_name = {}", oso_name);
                     let data = fs::read(oso_name).context(note).with_context(|| {
                         format!("read object file `{}` referenced by", oso_name)
                     })?;
